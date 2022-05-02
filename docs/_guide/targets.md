@@ -5,7 +5,7 @@ subtitle: Querying Descendants
 
 One of the three [core patterns]({{ site.baseurl }}/guide/introduction#three-core-concepts-observe-listen-query) is Querying. In Catalyst, Targets are the preferred way to query. Targets use `querySelector` under the hood, but in a way that makes it a lot simpler to work with.
 
-Catalyst Components are really just Web Components, so you could simply use `querySelector` or `querySelectorAll` to select descendants of the element. Targets avoid some of the problems of `querySelector`; they provide a more consistent interface, avoid coupling CSS classes or HTML tag names to JS, and they handle subtle issues like nested components. Targets are also a little more ergonomic to reuse in a class. We'd recommend using Targets over `querySelector` wherever you can.
+Catalyst Components are really just Web Components, so you could use `querySelector` or `querySelectorAll` to select descendants of the element. Targets avoid some of the problems of `querySelector`; they provide a more consistent interface, avoid coupling CSS classes or HTML tag names to JS, and they handle subtle issues like nested components. Targets are also a little more ergonomic to reuse in a class. We'd recommend using Targets over `querySelector` wherever you can.
 
 To create a Target, use the `@target` decorator on a class field, and add the matching `data-target` attribute to your HTML, like so:
 
@@ -136,21 +136,32 @@ Important to note here is that nodes from the `shadowRoot` get returned _first_.
 
 ### What about without Decorators?
 
-If you're using decorators, then the `@target` and `@targets` decorators will turn the decorated properties into getters.
-
-If you're not using decorators, then you'll need to make a `getter`, and call `findTarget(this, key)` or `findTargets(this, key)` in the getter, for example:
+If you're not using decorators, then the `@target` and `@targets` decorators have an escape hatch: you can define a static class field using the `[target.static]` computed property, as an array of key names. Like so:
 
 ```js
-import {findTarget, findTargets} from '@github/catalyst'
+import {controller, target, targets} from '@github/catalyst'
+
+controller(class HelloWorldElement extends HTMLElement {
+  // The same as `@target output`
+  [target.static] = ['output']
+
+  // The same as `@targets pages; @targets links`
+  [targets.static] = ['pages', 'links']
+
+})
+```
+
+This is functionally identical to:
+
+```js
+import {controller} from '@github/catalyst'
+
+@controller
 class HelloWorldElement extends HTMLElement {
+  @target output
 
-  get output() {
-    return findTarget(this, 'output')
-  }
-
-  get pages() {
-    return findTargets(this, 'pages')
-  }
+  @targets pages
+  @targets links
 
 }
 ```

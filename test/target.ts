@@ -1,14 +1,18 @@
 import {expect, fixture, html} from '@open-wc/testing'
-import {target, targets} from '../src/target.js'
-import {controller} from '../src/controller.js'
+import {target, targets, targetable} from '../src/target.js'
+import {controllable} from '../src/controllable.js'
 
 describe('Targetable', () => {
-  @controller
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  class TargetTestElement extends HTMLElement {
+  @targetable
+  class TargetTest extends controllable(HTMLElement) {
     @target foo!: Element
     bar = 'hello'
-    @target baz!: Element
+    count = 0
+    #baz!: Element
+    @target set baz(value: Element) {
+      this.count += 1
+      this.#baz = value
+    }
     @target qux!: Element
     @target shadow!: Element
 
@@ -18,6 +22,7 @@ describe('Targetable', () => {
     @target quxs!: Element[]
     @target shadows!: Element[]
   }
+  window.customElements.define('target-test', TargetTest)
 
   let instance: HTMLElement
   beforeEach(async () => {

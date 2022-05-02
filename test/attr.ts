@@ -1,11 +1,11 @@
 import {expect, fixture, html} from '@open-wc/testing'
-import {controller} from '../src/controller.js'
-import {attr} from '../src/attr.js'
+import {attr, attrable} from '../src/attr.js'
+import {controllable} from '../src/controllable.js'
 
-describe('Attr', () => {
+describe('Attrable', () => {
   {
-    @controller
-    class InitializeAttrTest extends HTMLElement {
+    @attrable
+    class InitializeAttrTest extends controllable(HTMLElement) {
       @attr fooBar = 'hello'
       fooBaz = 1
 
@@ -21,6 +21,7 @@ describe('Attr', () => {
         this.#bing = value
       }
     }
+    window.customElements.define('initialize-attr-test', InitializeAttrTest)
 
     let instance: InitializeAttrTest
     beforeEach(async () => {
@@ -37,74 +38,209 @@ describe('Attr', () => {
       expect(instance).to.have.property('bingBaz', 'world')
     })
 
-    it('reflects the initial value as an attribute, if not present', () => {
-      expect(instance).to.have.attribute('data-foo-bar', 'hello')
-      expect(instance).to.not.have.attribute('data-foo-baz')
-      expect(instance).to.have.attribute('data-bing-baz', 'world')
+    it('does not create attributes based on the initial value', () => {
+      expect(instance).to.not.have.attribute('foo-bar')
+      expect(instance).to.not.have.attribute('foo-baz')
+      expect(instance).to.not.have.attribute('bing-baz')
     })
 
     it('prioritises the value in the attribute over the property', async () => {
-      instance = await fixture(html`<initialize-attr-test data-foo-bar="goodbye" data-bing-baz="universe" />`)
+      instance = await fixture(html`<initialize-attr-test foo-bar="goodbye" bing-baz="universe" />`)
       expect(instance).to.have.property('fooBar', 'goodbye')
-      expect(instance).to.have.attribute('data-foo-bar', 'goodbye')
+      expect(instance).to.have.attribute('foo-bar', 'goodbye')
       expect(instance).to.have.property('bingBaz', 'universe')
-      expect(instance).to.have.attribute('data-bing-baz', 'universe')
+      expect(instance).to.have.attribute('bing-baz', 'universe')
     })
 
     it('changes the property when the attribute changes', async () => {
-      instance.setAttribute('data-foo-bar', 'goodbye')
+      instance.setAttribute('foo-bar', 'goodbye')
       await Promise.resolve()
       expect(instance).to.have.property('fooBar', 'goodbye')
-      instance.setAttribute('data-bing-baz', 'universe')
+      instance.setAttribute('bing-baz', 'universe')
       await Promise.resolve()
       expect(instance).to.have.property('bingBaz', 'universe')
     })
 
-    it('changes the attribute when the property changes', () => {
+    it('resets to the default value when the attribute is removed', async () => {
+      instance.setAttribute('foo-bar', 'goodbye')
+      expect(instance).to.have.property('fooBar', 'goodbye')
+      instance.setAttribute('foo-bar', 'goodbye')
+      instance.removeAttribute('foo-bar')
+      await Promise.resolve()
+      expect(instance).to.have.property('fooBar', 'hello')
+    })
+
+    it('changes the attribute when the property changes', async () => {
       instance.fooBar = 'goodbye'
-      expect(instance).to.have.attribute('data-foo-bar', 'goodbye')
+      await Promise.resolve()
+      expect(instance).to.have.attribute('foo-bar', 'goodbye')
       instance.bingBaz = 'universe'
-      expect(instance).to.have.attribute('data-bing-baz', 'universe')
+      await Promise.resolve()
+      expect(instance).to.have.attribute('bing-baz', 'universe')
+    })
+
+    it('calls underlying get when retrieving, with no attribute set', async () => {
+      instance.getCount = 0
+      instance.setCount = 0
+      instance.removeAttribute('bing-baz')
+      instance.bingBaz
+      expect(instance).to.have.property('getCount', 1)
+    })
+
+    it('does not overly eagerly call get/set on attribute change', async () => {
+      instance.getCount = 0
+      instance.setCount = 0
+      instance.setAttribute('bing-baz', 'one')
+      instance.setAttribute('bing-baz', 'one')
+      instance.setAttribute('bing-baz', 'one')
+      instance.setAttribute('bing-baz', 'one')
+      await Promise.resolve()
+      expect(instance).to.have.property('getCount', 0)
+      expect(instance).to.have.property('setCount', 4)
     })
   }
 
   describe('types', () => {
+    it('infers number types from property and casts as number always', async () => {
+      @attrable
+      class NumberAttrTest extends controllable(HTMLElement) {
+        @attr fooBar = 1
+      }
+      window.customElements.define('number-attr-test', NumberAttrTest)
+      const instance = await fixture<NumberAttrTest>(html`<number-attr-test />`)
+
+      expect(instance).to.have.property('fooBar', 1)
+      expect(instance).to.not.have.attribute('foo-bar')
+      instance.setAttribute('foo-bar', '7')
+      await Promise.resolve()
+      expect(instance).to.have.property('fooBar', 7)
+      instance.setAttribute('foo-bar', '-3.14')
+      await Promise.resolve()
+      expect(instance).to.have.property('fooBar', -3.14)
+      instance.setAttribute('foo-bar', 'Not a Number')
+      await Promise.resolve()
+      expect(instance).to.have.property('fooBar').satisfy(Number.isNaN)
+      instance.fooBar = 3.14
+      await Promise.resolve()
+      expect(instance.getAttribute('foo-bar')).to.equal('3.14')
+      instance.removeAttribute('foo-bar')
+      await Promise.resolve()
+      expect(instance).to.have.property('fooBar', 1)
+    })
+
     it('infers boolean types from property and uses has/toggleAttribute', async () => {
-      @controller
-      class BooleanAttrTest extends HTMLElement {
+      @attrable
+      class BooleanAttrTest extends controllable(HTMLElement) {
         @attr fooBar = false
       }
+      window.customElements.define('boolean-attr-test', BooleanAttrTest)
 
       const instance = await fixture<BooleanAttrTest>(html`<boolean-attr-test />`)
 
       expect(instance).to.have.property('fooBar', false)
-      expect(instance).to.not.have.attribute('data-foo-bar')
-      instance.setAttribute('data-foo-bar', '7')
+      expect(instance).to.not.have.attribute('foo-bar')
+      instance.setAttribute('foo-bar', '7')
       await Promise.resolve()
       expect(instance).to.have.property('fooBar', true)
-      instance.setAttribute('data-foo-bar', 'hello')
+      instance.setAttribute('foo-bar', 'hello')
       await Promise.resolve()
       expect(instance).to.have.property('fooBar', true)
-      instance.setAttribute('data-foo-bar', 'false')
+      instance.setAttribute('foo-bar', 'false')
       await Promise.resolve()
       expect(instance).to.have.property('fooBar', true)
-      instance.removeAttribute('data-foo-bar')
+      instance.removeAttribute('foo-bar')
       await Promise.resolve()
       expect(instance).to.have.property('fooBar', false)
       instance.fooBar = true
       await Promise.resolve()
-      expect(instance).to.have.attribute('data-foo-bar', '')
+      expect(instance).to.have.attribute('foo-bar', '')
       instance.fooBar = false
       await Promise.resolve()
-      expect(instance).to.not.have.attribute('data-foo-bar')
-      instance.removeAttribute('data-foo-bar')
+      expect(instance).to.have.property('fooBar', false)
+      expect(instance).to.not.have.attribute('foo-bar')
+      instance.removeAttribute('foo-bar')
       await Promise.resolve()
       expect(instance).to.have.property('fooBar', false)
+      expect(instance).to.not.have.attribute('foo-bar')
+    })
+
+    it('defaults to inferring string type for non-boolean non-number types', async () => {
+      const regexp = /^a regexp$/
+      @attrable
+      class RegExpAttrTest extends controllable(HTMLElement) {
+        @attr fooBar = regexp
+      }
+      window.customElements.define('reg-exp-attr-test', RegExpAttrTest)
+      const instance = await fixture<RegExpAttrTest>(html`<reg-exp-attr-test />`)
+
+      expect(instance).to.have.property('fooBar', regexp)
+      expect(instance).to.not.have.attribute('foo-bar')
+      instance.setAttribute('foo-bar', '/^another$/')
+      await Promise.resolve()
+      expect(instance).to.have.property('fooBar', '/^another$/')
+      instance.removeAttribute('foo-bar')
+      await Promise.resolve()
+      expect(instance).to.have.property('fooBar', regexp)
+      expect(instance).to.not.have.attribute('foo-bar')
+    })
+
+    it('uses get logic to retrieve value without attribute set', async () => {
+      let n = 0.5
+      @attrable
+      class SeedValueAttrTest extends controllable(HTMLElement) {
+        @attr
+        get seedValue() {
+          return n
+        }
+        set seedValue(newValue: number) {}
+      }
+      window.customElements.define('seed-value-attr-test', SeedValueAttrTest)
+      const instance = await fixture<SeedValueAttrTest>(html`<seed-value-attr-test />`)
+
+      expect(instance).to.have.property('seedValue', 0.5)
+      n = 1
+      expect(instance).to.have.property('seedValue', 1)
+      expect(instance).to.not.have.attribute('seed-value')
+      instance.setAttribute('seed-value', '3')
+      expect(instance).to.have.property('seedValue', 3)
+      instance.seedValue = 8
+      await Promise.resolve()
+      expect(instance).to.have.attribute('seed-value', '8')
+      expect(instance).to.have.property('seedValue', 8)
+      n = 17
+      instance.removeAttribute('seed-value')
+      expect(instance).to.have.property('seedValue', 17)
+    })
+
+    it('can derive from internal state', async () => {
+      @attrable
+      class InternalStateAttrTest extends controllable(HTMLElement) {
+        state = 'b'
+        @attr
+        get isA(): boolean {
+          return this.state === 'a'
+        }
+        set isA(value: boolean) {
+          this.state = value ? 'a' : 'b'
+        }
+      }
+      window.customElements.define('internal-state-attr-test', InternalStateAttrTest)
+      const instance = await fixture<InternalStateAttrTest>(html`<internal-state-attr-test />`)
+
+      expect(instance).to.have.property('state', 'b')
+      expect(instance).to.have.property('isA', false)
+      expect(instance).to.not.have.attribute('is-a', '')
+      instance.isA = true
+      expect(instance).to.have.property('state', 'a')
+      await Promise.resolve()
+      expect(instance).to.have.property('state', 'a')
+      expect(instance).to.have.property('isA', true)
+      expect(instance).to.have.attribute('is-a')
     })
 
     it('avoids infinite loops', async () => {
-      @controller
-      class LoopAttrTest extends HTMLElement {
+      @attrable
+      class LoopAttrTest extends controllable(HTMLElement) {
         count = 0
         @attr
         get fooBar() {
@@ -114,24 +250,25 @@ describe('Attr', () => {
           this.count += 1
         }
       }
-
+      window.customElements.define('loop-attr-test', LoopAttrTest)
       const instance = await fixture<LoopAttrTest>(html`<loop-attr-test />`)
 
       expect(instance).to.have.property('fooBar')
       instance.fooBar = 1
-      instance.setAttribute('data-foo-bar', '2')
+      instance.setAttribute('foo-bar', '2')
       instance.fooBar = 3
-      instance.setAttribute('data-foo-bar', '4')
+      instance.setAttribute('foo-bar', '4')
     })
   })
 
   describe('naming', () => {
-    @controller
-    class NamingAttrTest extends HTMLElement {
+    @attrable
+    class NamingAttrTest extends controllable(HTMLElement) {
       @attr fooBarBazBing = 'a'
       @attr URLBar = 'b'
       @attr ClipX = 'c'
     }
+    window.customElements.define('naming-attr-test', NamingAttrTest)
 
     let instance: NamingAttrTest
     beforeEach(async () => {
@@ -141,19 +278,22 @@ describe('Attr', () => {
     it('converts camel cased property names to their HTML dasherized equivalents', async () => {
       expect(instance.fooBarBazBing).to.equal('a')
       instance.fooBarBazBing = 'bar'
-      expect(instance.getAttributeNames()).to.include('data-foo-bar-baz-bing')
+      await Promise.resolve()
+      expect(instance.getAttributeNames()).to.include('foo-bar-baz-bing')
     })
 
     it('will intuitively dasherize acryonyms', async () => {
       expect(instance.URLBar).to.equal('b')
       instance.URLBar = 'bar'
-      expect(instance.getAttributeNames()).to.include('data-url-bar')
+      await Promise.resolve()
+      expect(instance.getAttributeNames()).to.include('url-bar')
     })
 
     it('dasherizes cap suffixed names correctly', async () => {
       expect(instance.ClipX).to.equal('c')
       instance.ClipX = 'bar'
-      expect(instance.getAttributeNames()).to.include('data-clip-x')
+      await Promise.resolve()
+      expect(instance.getAttributeNames()).to.include('clip-x')
     })
   })
 })

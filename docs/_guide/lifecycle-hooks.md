@@ -38,3 +38,53 @@ The [`disconnectedCallback()` is part of Custom Elements][ce-callbacks], and get
 The [`adoptedCallback()` is part of Custom Elements][ce-callbacks], and gets called when your element moves from one `document` to another (such as an iframe). It's very unlikely to occur, you'll almost never need this.
 
 [ce-callbacks]: https://developer.mozilla.org/en-US/docs/Web/Web_Components/Using_custom_elements#Using_the_lifecycle_callbacks
+
+## Catalyst Custom callbacks
+
+Catalyst also introduces a few custom callbacks. These shouldn't be needed for authoring regular components, but can be used for [Abilities]({{ site.baseurl }}/guide/abilities).
+
+All custom callbacks use `Symbol()` keys, and so need to be imported from Catalyst, for example:
+
+```typescript
+import {controller, attachShadowCallback} from '@github/catalyst'
+
+@controller
+class UserListElement extends HTMLElement {
+    [attachShadowCallback](shadowRoot: ShadowRoot) {}
+}
+```
+
+### `[attachShadowCallback](shadowRoot: ShadowRoot)`
+
+Catalyst calls this whenever a ShadowRoot gets attached to an element. This callback is called during the following phases:
+
+ - During the constructor, where the element might recieve a declarative ShadowDOM root.
+ - Any time the `attachShadow()` function is called.
+
+This method is _usually_ called zero or once, but may be called twice if the element recieves a Declarative ShadowDOM root, and overrides this with another call to `attachShadow()`.
+
+This callback isn't particularly useful for authoring a custom element, because you can access exsiting shadows with `.attachInternals().shadowRoot` or create a new shadowRoot with `.attachShadow({ mode })`. It is however very useful for [Abilities]({{ site.baseurl }}/guide/abilities), which can use this callback as an easy mechanism to intercept when a ShadowRoot gets attached to an element.
+
+### `[attachInternalsCallback](internals: ElementInternals)`
+
+Catalyst automatically calls `attachInternals` during the `constructor()` phase, and then calls `[attachInternalsCallback](internals)`. In doing so, it enablies [Abilities]({{ site.baseurl }}/guide/abilities) to also have access to `ElementInternals`. It does so while also preserving the ability for `attachInternals()` to be called again (usually `attachInternals()` will error if called twice).
+
+This callback isn't particularly useful for authoring a custom element, because if you need access to the internals, you can call `.attachInternals()` yourself. It is however very useful for [Abilities]({{ site.baseurl }}/guide/abilities), which can use this callback as an easy mechanism to intercept `ElementInternals` for use within the Ability itself.
+
+### `[attrChangedCallback](changed: Map<PropertyKey, unknown>)`
+
+`[attrChangedCallback]` is called whenever an `@attr` decorated field changes value. The `[attrChangedCallback]` is batched, and so is called with a Map of all the changed `@attr` properties during the batch cycle.
+
+While this could be useful for custom elements, it is instead recommended to use [`@attr` methods]({{ site.baseurl }}/guide/attrs) to detect when an `@attr` value is changing.
+
+### `[targetChangedCallback](changed: Map<PropertyKey, Element>)`
+
+`[targetChangedCallback]` is called whenever an `@target` decorated field changes value. The `[targetChangedCallback]` is batched, and so is called with a Map of all the changed `@target` properties during the batch cycle.
+
+While this could be useful for custom elements, it is instead recommended to use [`@target` methods]({{ site.baseurl }}/guide/targets) to detect when an `@target` value is changing.
+
+### `[targetsChangedCallback](changed: Map<PropertyKey, Element>)`
+
+`[targetsChangedCallback]` is called whenever a `@targets` decorated field changes value. The `[targetsChangedCallback]` is batched, and so is called with a Map of all the changed `@targets` properties during the batch cycle.
+
+While this could be useful for custom elements, it is instead recommended to use [`@targets` methods]({{ site.baseurl }}/guide/targets) to detect when an `@targets` value is changing.

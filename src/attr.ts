@@ -1,96 +1,105 @@
-import type {CustomElementClass} from './custom-element.js'
-import {dasherize} from './dasherize.js'
-import {meta} from './core.js'
+import type {ControllableClass, Controllable} from './controllable.js'
+import {dasherize, mustDasherize} from './dasherize.js'
+import {createMark} from './mark.js'
 
-const attrKey = 'attr'
-type attrValue = string | number | boolean
+const attrChangedCallback = Symbol()
 
-/**
- * Attr is a decorator which tags a property as one to be initialized via
- * `initializeAttrs`.
- *
- * The signature is typed such that the property must be one of a String,
- * Number or Boolean. This matches the behavior of `initializeAttrs`.
- */
-export function attr<K extends string>(proto: Record<K, attrValue>, key: K): void {
-  meta(proto, attrKey).add(key)
+interface Attrable extends Controllable {
+  [key: PropertyKey]: unknown
+  [attrChangedCallback](changed: Map<PropertyKey, unknown>): void
 }
 
-/**
- * initializeAttrs is called with a set of class property names (if omitted, it
- * will look for any properties tagged with the `@attr` decorator). With this
- * list it defines property descriptors for each property that map to `data-*`
- * attributes on the HTMLElement instance.
- *
- * It works around Native Class Property semantics - which are equivalent to
- * calling `Object.defineProperty` on the instance upon creation, but before
- * `constructor()` is called.
- *
- * If a class property is assigned to the class body, it will infer the type
- * (using `typeof`) and define an appropriate getter/setter combo that aligns
- * to that type. This means class properties assigned to Numbers can only ever
- * be Numbers, assigned to Booleans can only ever be Booleans, and assigned to
- * Strings can only ever be Strings.
- *
- * This is automatically called as part of `@controller`. If a class uses the
- * `@controller` decorator it should not call this manually.
- */
-const initialized = new WeakSet<Element>()
-export function initializeAttrs(instance: HTMLElement, names?: Iterable<string>): void {
-  if (initialized.has(instance)) return
-  initialized.add(instance)
-  if (!names) names = meta(Object.getPrototypeOf(instance), attrKey)
-  for (const key of names) {
-    const value = (<Record<PropertyKey, unknown>>(<unknown>instance))[key]
-    const name = attrToAttributeName(key)
-    let descriptor: PropertyDescriptor = {
-      configurable: true,
-      get(this: HTMLElement): string {
-        return this.getAttribute(name) || ''
-      },
-      set(this: HTMLElement, newValue: string) {
-        this.setAttribute(name, newValue || '')
+const Identity = (v: unknown) => v
+let setFromMutation = false
+const attrs = new WeakMap<Attrable, Map<string, PropertyKey>>()
+
+const handleMutations = (mutations: MutationRecord[]) => {
+  for (const mutation of mutations) {
+    if (mutation.type === 'attributes') {
+      const name = mutation.attributeName!
+      const el = mutation.target as unknown as Attrable
+      const key = attrs.get(el)?.get(name)
+      if (key) {
+        setFromMutation = true
+        el[key] = el.getAttribute(name)
+        setFromMutation = false
       }
-    }
-    if (typeof value === 'number') {
-      descriptor = {
-        configurable: true,
-        get(this: HTMLElement): number {
-          return Number(this.getAttribute(name) || 0)
-        },
-        set(this: HTMLElement, newValue: string) {
-          this.setAttribute(name, newValue)
-        }
-      }
-    } else if (typeof value === 'boolean') {
-      descriptor = {
-        configurable: true,
-        get(this: HTMLElement): boolean {
-          return this.hasAttribute(name)
-        },
-        set(this: HTMLElement, newValue: boolean) {
-          this.toggleAttribute(name, newValue)
-        }
-      }
-    }
-    Object.defineProperty(instance, key, descriptor)
-    if (key in instance && !instance.hasAttribute(name)) {
-      descriptor.set!.call(instance, value)
     }
   }
 }
+const observer = new MutationObserver(handleMutations)
 
-const attrToAttributeName = (name: string) => `data-${dasherize(name)}`
-
-export function defineObservedAttributes(classObject: CustomElementClass): void {
-  let observed = classObject.observedAttributes || []
-  Object.defineProperty(classObject, 'observedAttributes', {
-    configurable: true,
-    get() {
-      return [...meta(classObject.prototype, attrKey)].map(attrToAttributeName).concat(observed)
-    },
-    set(attributes: string[]) {
-      observed = attributes
+const [attr, getAttrs, initializeAttrs] = createMark<Attrable>(
+  ({name}) => mustDasherize(name, '@attr'),
+  (instance: Attrable, {name, kind, access}) => {
+    let cast: typeof Identity | typeof Boolean | typeof Number | typeof String = Identity
+    let initialValue: unknown
+    if (access.get) {
+      initialValue = access.get.call(instance)
+    } else if ('value' in access && kind !== 'method') {
+      initialValue = access.value
     }
-  })
-}
+    let value = initialValue
+    const attributeName = dasherize(name)
+    const setCallback = (kind === 'method' ? access.value : access.set) || Identity
+    const getCallback = access.get || (() => value)
+    if (!attrs.get(instance)) attrs.set(instance, new Map())
+    attrs.get(instance)!.set(attributeName, name)
+    if (typeof value === 'number') {
+      cast = Number
+    } else if (typeof value === 'boolean') {
+      cast = Boolean
+    } else if (typeof value === 'string') {
+      cast = String
+    }
+    const queue = new Map()
+    const requestAttrChanged = async (newValue: unknown) => {
+      queue.set(name, newValue)
+      if (queue.size > 1) return
+      await Promise.resolve()
+      const changed = new Map(queue)
+      queue.clear()
+      instance[attrChangedCallback](changed)
+    }
+    return {
+      get() {
+        const has = instance.hasAttribute(attributeName)
+        if (has) {
+          return cast === Boolean ? has : cast(instance.getAttribute(attributeName))
+        }
+        return cast(getCallback.call(instance))
+      },
+      set(newValue: unknown) {
+        const isInitial = newValue === null
+        if (isInitial) newValue = initialValue
+        const same = Object.is(value, newValue)
+        value = newValue
+        setCallback.call(instance, value)
+        if (setFromMutation || same || isInitial) return
+        requestAttrChanged(newValue)
+      }
+    }
+  }
+)
+
+export {attr, getAttrs, attrChangedCallback}
+export const attrable = <T extends ControllableClass>(Class: T) =>
+  class extends Class {
+    [key: PropertyKey]: unknown
+    constructor(...args: any[]) {
+      super(...args)
+      initializeAttrs(this)
+      observer.observe(this, {attributeFilter: Array.from(getAttrs(this)).map(dasherize)})
+    }
+
+    [attrChangedCallback](changed: Map<PropertyKey, unknown>) {
+      if (!this.isConnected) return
+      for (const [name, value] of changed) {
+        if (typeof value === 'boolean') {
+          this.toggleAttribute(dasherize(name), value)
+        } else {
+          this.setAttribute(dasherize(name), String(value))
+        }
+      }
+    }
+  }

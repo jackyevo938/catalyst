@@ -4,21 +4,33 @@ import {createMark} from '../src/mark.js'
 
 describe('createMark', () => {
   it('returns a tuple of functions: a mark and getMarks', () => {
-    const mark = createMark(() => {})
+    const mark = createMark(
+      () => {},
+      () => ({})
+    )
     expect(mark).to.be.an('array').with.lengthOf(2)
     expect(mark).to.have.property('0').a('function')
     expect(mark).to.have.property('1').a('function')
   })
 
   it('attaches a `static` unique symbol to the first function', () => {
-    const mark = createMark(() => {})
+    const mark = createMark(
+      () => {},
+      () => ({})
+    )
     expect(mark).to.have.nested.property('0.static').a('symbol')
-    const otherMark = createMark(() => {})
+    const otherMark = createMark(
+      () => {},
+      () => ({})
+    )
     expect(otherMark).to.have.nested.property('0.static').a('symbol').not.equal(mark[0].static)
   })
 
   it('can be added to class fields without errors', () => {
-    const [mark] = createMark(() => {})
+    const [mark] = createMark(
+      () => {},
+      () => ({})
+    )
     class FooBar {
       @mark foo: unknown
       @mark bar = 1
@@ -28,7 +40,10 @@ describe('createMark', () => {
   })
 
   it('can be added to getters or setters without errors', () => {
-    const [mark] = createMark(() => {})
+    const [mark] = createMark(
+      () => {},
+      () => ({})
+    )
     class FooBar {
       @mark get foo() {
         return 1
@@ -44,7 +59,10 @@ describe('createMark', () => {
   })
 
   it('can be added to methods without errors', () => {
-    const [mark] = createMark(() => {})
+    const [mark] = createMark(
+      () => {},
+      () => ({})
+    )
     class Foo {
       @mark foo() {}
     }
@@ -52,7 +70,10 @@ describe('createMark', () => {
   })
 
   it('retrieves all marked fields with the get mark function', () => {
-    const [mark, getMark] = createMark(() => {})
+    const [mark, getMark] = createMark(
+      () => {},
+      () => ({})
+    )
     class FooBar {
       @mark foo: unknown
       @mark bar = 1
@@ -71,7 +92,10 @@ describe('createMark', () => {
   })
 
   it('retrieves marked symbol methods correctly', () => {
-    const [mark, getMark] = createMark(() => {})
+    const [mark, getMark] = createMark(
+      () => {},
+      () => ({})
+    )
     const sym = Symbol('foo')
     class FooBar {
       @mark [sym]() {}
@@ -80,7 +104,10 @@ describe('createMark', () => {
   })
 
   it('retrieves fields declared using the `mark.static` symbol as a static class field', () => {
-    const [mark, getMark] = createMark(() => {})
+    const [mark, getMark] = createMark(
+      () => {},
+      () => ({})
+    )
     class FooBar {
       static [mark.static] = ['bar', 'bing', 'quuz', 'grault']
       @mark foo: unknown
@@ -101,7 +128,10 @@ describe('createMark', () => {
   })
 
   it('will not contain duplicates', () => {
-    const [mark, getMark] = createMark(() => {})
+    const [mark, getMark] = createMark(
+      () => {},
+      () => ({})
+    )
     class FooBar {
       static [mark.static] = ['bar', 'bing', 'quuz', 'grault']
       @mark foo: unknown
@@ -122,7 +152,7 @@ describe('createMark', () => {
 
   it('calls the given function for each field, with name and type', () => {
     const validate = fake()
-    const [mark] = createMark(validate)
+    const [mark] = createMark(validate, () => ({}))
     const sym = Symbol('garply')
     class FooBar {
       @mark foo: unknown
@@ -153,7 +183,7 @@ describe('createMark', () => {
 
   it('calls the given function for each static defined field once initialized, with name and type', () => {
     const validate = fake()
-    const [mark, getMark] = createMark(validate)
+    const [mark, getMark] = createMark(validate, () => ({}))
     class FooBar {
       static [mark.static] = ['foo', 'bar', 'baz', 'bing', 'qux', 'quuz', 'corge', 'grault']
       foo: unknown
